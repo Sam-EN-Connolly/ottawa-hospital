@@ -42,6 +42,6 @@ def image_data(exam):
 
 for exam in case.Examinations:
     pixels = image_data(exam)
-    import matplotlib.pyplot as plt
-    plt.imshow(pixels[60],cmap = 'gray')
-    plt.show()
+    #import matplotlib.pyplot as plt
+    #plt.imshow(pixels[60],cmap = 'gray')
+    #plt.show()
