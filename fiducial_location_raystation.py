@@ -61,19 +61,9 @@ def image_data(exam):
 
     # extract pixel data as .NET type <Array[Byte]> and convert to numpy array
     pixel_data = exam.Series[0].ImageStack.PixelData
-    pixel_data = pixel_data.astype(np.float)
-    length = len(pixel_data)
-
-    evens = np.arange(0, length, 2, dtype=np.int)
-    odds = np.arange(1, length, 2, dtype=np.int)
-
-    # convert from 16-bit 
-    if pixel_representation == 0:
-        array = (pixel_data[evens]+pixel_data[odds]*256)
-    else:
-        array = (pixel_data[evens]+pixel_data[odds]*256)
-        array = array.astype(np.int16)
-
+    pixel_bytes = bytes(pixel_data)
+    pixet_float = np.frombuffer(pixel_bytes, dtype=np.uint16)
+    
     # reshape array to match image shape 
     img3d = np.reshape(array, img_shape)
 
