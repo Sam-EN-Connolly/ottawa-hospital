@@ -10,6 +10,7 @@ The anlysis is run for the current oppen case and primary examination.
 '''
 
 from connect import *
+import sys
 import numpy as np
 from scipy import ndimage 
 
@@ -53,11 +54,15 @@ def image_data(exam):
     spacing_z = (float(exam.Series[0].ImageStack.SlicePositions[1]) - float(exam.Series[0].ImageStack.SlicePositions[0])) * 10 
     pixel_spacing = (spacing_z, spacing_y, spacing_x)
 
-    # determine the resclae values and 
+    # determine the resclae values to turn pixel values to HU values
     #rescale_intercept = exam.Series[0].ImageStack.ConversionParameters.RescaleIntercept
     #rescale_slope = exam.Series[0].ImageStack.ConversionParameters.RescaleSlope
-    # determine if data is unsigner integrer or two's compliment
+    
+    # determine if data is unsigner integrer, if not terminate program
     pixel_representation = exam.Series[0].ImageStack.ConversionParameters.PixelRepresentation
+    if pixel_representation != 0 : 
+        MessageBox.Show("Pixel representation must be unigned integer")
+        sys.exit()
 
     # extract pixel data as .NET type <Array[Byte]> and convert to numpy array
     pixel_data = exam.Series[0].ImageStack.PixelData
@@ -65,9 +70,9 @@ def image_data(exam):
     pixet_float = np.frombuffer(pixel_bytes, dtype=np.uint16)
     
     # reshape array to match image shape 
-    img3d = np.reshape(array, img_shape)
+    img3d = np.reshape(pixet_float, img_shape)
 
-    # rescale HU values
+    # rescale to HU values
     #img3d = img3d*rescale_slope+rescale_intercept
 
     return img3d, img_shape, origin, pixel_spacing
