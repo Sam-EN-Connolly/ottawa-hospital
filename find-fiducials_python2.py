@@ -12,22 +12,13 @@ $ python OpenViewCT.py ~/filepath
 
 import pydicom as dcm
 import numpy as np
-import matplotlib.pyplot as plt
 import sys
 import os 
 import glob
 import warnings
 
-
-from matplotlib.widgets import Slider, Button, RadioButtons
-from scipy import ndimage
-from scipy import interpolate
-
-from pylab import rcParams
-rcParams['figure.figsize'] = 8, 6
-
 warnings.filterwarnings("ignore", category=RuntimeWarning)
-plt.style.use('dark_background')
+
 
 # define global variables
 
@@ -40,7 +31,7 @@ def open_dcm_files(dir_path) :
     files = []
     os.chdir(dir_path)                                   # move to directory with DICOM files
     print('glob: {}'.format(dir_path))
-    for fname in glob.glob('./*.dcm', recursive=False):
+    for fname in glob.glob('./*.dcm'):
         #print("loading: {}".format(fname))                 # see loaded files printed
         files.append(dcm.dcmread(fname))
     print("file count: {}".format(len(files)))
@@ -119,89 +110,59 @@ def fiducial_search_area (img3d, fiducial_points_guess, img_shape, x_origin, y_o
         mask[mask<=thresh] = 0
 
         # add fiducial center of mass
-        fiducial_points_found.append(ndimage.measurements.center_of_mass(mask))
+        fiducial_points_found.append(center_of_mass(mask))
 
         # add fiducial to fiducial_matrix
         fiducial_matrix += mask
 
     #fiducial center of mass
-    fiducial_cm = ndimage.measurements.center_of_mass(fiducial_matrix)
+    fiducial_cm = center_of_mass(fiducial_matrix)
 
     return fiducial_matrix, fiducial_points_found, fiducial_cm
 
-def index_to_mm (point_index, x_origin, y_origin, z_origin, pixel_spacing, round=False):
+def index_to_mm (point_index, x_origin, y_origin, z_origin, pixel_spacing, rounding=False):
     x_mm = (x_origin + point_index[2] * pixel_spacing[2])
     y_mm = (y_origin + point_index[1] * pixel_spacing[1])
     z_mm = (z_origin + point_index[0] * pixel_spacing[0])
 
-    if round : 
-        return [round(z_mm), round(y_mm), round(x_m)]
+    if rounding : 
+        return [round(z_mm), round(y_mm), round(x_mm)]
 
     return [z_mm, y_mm, x_mm]
 
-def mm_to_index (point_mm, x_origin, y_origin, z_origin, pixel_spacing, round=True):
+def mm_to_index (point_mm, x_origin, y_origin, z_origin, pixel_spacing, rounding=True):
     x_index = ((point_mm[2] - x_origin) / pixel_spacing[2])
     y_index = ((point_mm[1] - y_origin) / pixel_spacing[1])
     z_index = ((point_mm[0] - z_origin) / pixel_spacing[0])
 
-    if round : 
+    if rounding : 
         return [round(z_index), round(y_index), round(x_index)]
 
     return [z_index, y_index, x_index]
 
-# display functions
+def center_of_mass(input):
+    """
+    Calculate the center of mass of the values of an array at labels.
+    Parameters
+    ----------
+    input : ndarray
+        Data from which to calculate center-of-mass.
 
-def plot_fiducials(img3d, fiducial_matrix, fiducial_points_found, x_origin, y_origin, z_origin, pixel_spacing) : 
-    '''
-    plot_fiducials plots the slices containing fiducials. 
-    The inputs are the 3D matrix containing the image data (img3d), 
-    the 3d numpy matrix containing the threholded fiducials (fiducial_matrix),
-    and the locations of the fiducials to plot (fiducial_points_found).
-    '''
+    Returns
+    -------
+    center_of_mass : tuple, or list of tuples
+        Coordinates of centers-of-mass.
+    """
+    normalizer = np.sum(input)
+    grids = np.ogrid[[slice(0, i) for i in input.shape]]
 
-    fiducial_points_mm = []
-    for point in fiducial_points_found : 
-        fiducial_points_mm.append(index_to_mm(point, x_origin, y_origin, z_origin, pixel_spacing))
+    results = [np.sum(input * grids[dir].astype(float)) / normalizer
+               for dir in range(input.ndim)]
 
-    # plot image overlayed with fiducials
-    fig, ax = plt.subplots(2, 2)   
+    if np.isscalar(results[0]):
+        return tuple(results)
 
-    # fiducial 1
-    fid1_y, fid1_x = np.nonzero(fiducial_matrix[int(round(fiducial_points_found[0][0])), :, :])
-    ax[0,0].imshow(img3d[int(round(fiducial_points_found[0][0])), :, :], cmap='Greys_r', interpolation = 'nearest', origin = 'upper')
-    ax[0,0].scatter(fid1_x, fid1_y, s=1, c='r')
-    ax[0,0].set_title('Fiducial at x:'+str(round(fiducial_points_mm[0][2],1))+'mm y:'+str(round(fiducial_points_mm[0][1],1))+'mm z:'+str(round(fiducial_points_mm[0][0],1))+'mm')
-    ax[0,0].xaxis.set_visible(False)
-    ax[0,0].yaxis.set_visible(False)
-
-    # fiducial 2
-    fid2_y, fid2_x = np.nonzero(fiducial_matrix[int(round(fiducial_points_found[1][0])), :, :])
-    ax[0,1].imshow(img3d[int(round(fiducial_points_found[1][0])), :, :], cmap='Greys_r', interpolation = 'nearest', origin = 'upper')
-    ax[0,1].scatter(fid2_x, fid2_y, s=1, c='r')
-    ax[0,1].set_title('Fiducial at x:'+str(round(fiducial_points_mm[1][2]))+'mm y:'+str(round(fiducial_points_mm[1][1]))+'mm z:'+str(round(fiducial_points_mm[1][0]))+'mm')
-    ax[0,1].xaxis.set_visible(False)
-    ax[0,1].yaxis.set_visible(False)
-
-    # fiducial 3
-    fid3_y, fid3_x = np.nonzero(fiducial_matrix[int(round(fiducial_points_found[2][0])), :, :])
-    ax[1,0].imshow(img3d[int(round(fiducial_points_found[2][0])), :, :], cmap='Greys_r', interpolation = 'nearest', origin = 'upper')
-    ax[1,0].scatter(fid3_x, fid3_y, s=1, c='r')
-    ax[1,0].set_title('Fiducial at x:'+str(round(fiducial_points_mm[2][2]))+'mm y:'+str(round(fiducial_points_mm[2][1]))+'mm z:'+str(round(fiducial_points_mm[2][0]))+'mm')
-    ax[1,0].xaxis.set_visible(False)
-    ax[1,0].yaxis.set_visible(False)
-
-    #fiducial 4
-    fid4_y, fid4_x = np.nonzero(fiducial_matrix[int(round(fiducial_points_found[3][0])), :, :])
-    ax[1,1].imshow(img3d[int(round(fiducial_points_found[3][0])), :, :], cmap='Greys_r', interpolation = 'nearest', origin = 'upper')
-    ax[1,1].scatter(fid4_x, fid4_y, s=1, c='r')
-    ax[1,1].set_title('Fiducial at x:'+str(round(fiducial_points_mm[3][2]))+'mm y:'+str(round(fiducial_points_mm[3][1]))+'mm z:'+str(round(fiducial_points_mm[3][0]))+'mm')
-    ax[1,1].xaxis.set_visible(False)
-    ax[1,1].yaxis.set_visible(False)
-
-    fig.tight_layout(pad=3.0)
-
-    plt.show()
-    return
+    return [tuple(v) for v in np.array(results).T]
 
 def get_fiducial_guess(structure_wanted) :
     '''
@@ -251,10 +212,7 @@ def main() :
     print ("Fiducial 3 : {}".format(fiducial_points_mm[2]))
     print ("Fiducial 4 : {}".format(fiducial_points_mm[3]))
     print ("\nThe center of mass was found to be : {}".format(index_to_mm (fiducial_cm, x_origin, y_origin, z_origin, pixel_spacing)))
-
-    # plot slices with fiducial centers
-    plot_fiducials(img3d, fiducial_matrix, fiducial_points_found, x_origin, y_origin, z_origin, pixel_spacing)
-
+    
     return
 
 main()
