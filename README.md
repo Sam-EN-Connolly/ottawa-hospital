@@ -47,12 +47,3 @@ Acronyms :
 
 Data structures : 
 The main data structures used in the overall anaysis, are dictionsaries. These distionaries hold the metadata, fiducial data, contour data, and contour comparison data. Depending on the anysis performed, the structure of these dictionaries will be slightly different. 
-
-metatdata_dict : dictionary 
-- First level of dictionary keys : MRN
-- Second level of dictionary keys image type : either TPCT or FUSED
-- Third level of dictionary hold the variables with keys : 'image shape', 'origin', 'pixel spacing' 
-
-fiducial_dict = {} # {MRN : {'TPCT' : {...}, 'FUSED' : {...}, 'CHANGE' : {...}}}
-ROI_contour_dict = {} # {MRN : {'TPCT' : {...}, 'FUSED' : {...}, 'FUSED_ISO' : {...}}}
-contour_comparison_dict = {} # {MRN : {'TPCT_to_FUSED' : {...}, 'TPCT_to_FUSED_ISO' : {...}}}
