@@ -8,12 +8,12 @@ Currently the fidicuial search locations are hard-coded in for testing purposes.
 It requires that a patien, case, and examination are open. 
 '''
 
-from connect import *
 import sys
-import numpy as np
+import numpy as np 
+from connect import *
 
 ###################################################################
-#################### image extraction #############################
+#################### define analysis functions ####################
 ###################################################################
 
 def image_data(exam):
@@ -35,11 +35,11 @@ def image_data(exam):
     img3d : ndarray (3d)
         Matrix containing the pixel values of the ct image
     img_shape : tuple (z,y,x)
-        Shape of img3d in mm 
+        Shape of img3d in cm 
     origin : typle (z,y,x)
-        Location of image origin relative to numpy matrix indexing in mm
+        Location of image origin relative to numpy matrix indexing in cm
     pixel_spacing : tuple (z,y,x)
-        Distance between the centre of pixel in all three dimentions in mm
+        Distance between the centre of pixel in all three dimentions in cm
     '''
     # determine the shape of the image
     dim_x = exam.Series[0].ImageStack.NrPixels.x
@@ -48,15 +48,15 @@ def image_data(exam):
     img_shape = (dim_z, dim_y, dim_x)
 
     # determine the origin point, note sizes stored in cm in RayStation
-    origin_x = -float(exam.Series[0].ImageStack.Corner.x) * 10
-    origin_y = -float(exam.Series[0].ImageStack.Corner.y) * 10
-    origin_z = -float(exam.Series[0].ImageStack.Corner.z) * 10
+    origin_x = float(exam.Series[0].ImageStack.Corner.x)
+    origin_y = float(exam.Series[0].ImageStack.Corner.y)
+    origin_z = float(exam.Series[0].ImageStack.Corner.z)
     origin = (origin_z, origin_y, origin_x)
 
     # determine pixel spacing, note sizes stored in cm in RayStation
-    spacing_x = float(exam.Series[0].ImageStack.PixelSize.x) * 10
-    spacing_y = float(exam.Series[0].ImageStack.PixelSize.y) * 10 
-    spacing_z = (float(exam.Series[0].ImageStack.SlicePositions[1]) - float(exam.Series[0].ImageStack.SlicePositions[0])) * 10 
+    spacing_x = float(exam.Series[0].ImageStack.PixelSize.x)
+    spacing_y = float(exam.Series[0].ImageStack.PixelSize.y)
+    spacing_z = float(exam.Series[0].ImageStack.SlicePositions[1]) - float(exam.Series[0].ImageStack.SlicePositions[0])
     pixel_spacing = (spacing_z, spacing_y, spacing_x)
 
     # determine the resclae values to turn pixel values to HU values
@@ -66,12 +66,15 @@ def image_data(exam):
     # determine if data type of pixel, unsigned integer or two's compliment
     pixel_representation = exam.Series[0].ImageStack.ConversionParameters.PixelRepresentation
 
-    # get pixel data from RayStation
+
     pixel_data = exam.Series[0].ImageStack.PixelData
-    # convert from 16-bit to integers
+
     length = len(pixel_data)
-    evens = np.arange(0, length, 2, dtype=np.uint16)
-    odds = np.arange(1, length, 2, dtype=np.uint16)
+
+    # convert from 16-bit to integers
+    evens = np.arange(0, length, 2, dtype=np.int)
+    odds = np.arange(1, length, 2, dtype=np.int)
+    
     if pixel_representation == 0:
         pixel_arr = (pixel_data[evens] + pixel_data[odds] * 265)
     else:
@@ -87,28 +90,28 @@ def image_data(exam):
 
     return img3d, img_shape, origin, pixel_spacing
 
-###################################################################
-#################### fiducial search ##############################
-###################################################################
 
-def fiducial_search_area (img3d, fiducial_points_guess, fiducial_rad, img_shape, origin, pixel_spacing) :
+
+def fiducial_search_area (exam, img3d, fiducial_points_guess, fiducial_rad, img_shape, origin, pixel_spacing) :
     '''
     fiducial_search_area takes guesses for the fiducial locations and searhes for them within a certain radius through thresholding. 
 
     Parameters
     ----------
+    exam : pyScriptObject
+        The current examination data from the raystation statetree
     img3d : ndarray (3d)
         Matrix containing the pixel values of the ct image
     fiducial_points_guess : list [z,y,x]
-        Guesses for the fiducial locations in mm
+        Guesses for the fiducial locations in cm
     fiducial_rad : float
         Radius of search for fiducials
     img_shape : tuple (z,y,x)
-        Shape of img3d in mm 
+        Shape of img3d in cm 
     origin : typle (z,y,x)
-        Location of image origin relative to numpy matrix indexing in mm
+        Location of image origin relative to numpy matrix indexing in cm
     pixel_spacing : tuple (z,y,x)
-        Distance between the centre of pixel in all three dimentions in mm
+        Distance between the centre of pixel in all three dimentions in cm
 
     Returns
     -------
@@ -119,14 +122,16 @@ def fiducial_search_area (img3d, fiducial_points_guess, fiducial_rad, img_shape,
     fiducial_cm: tuple
         The location of the center of mass of all the fiducials
     '''
-    fiducial_matrix = np.zeros(img_shape)
+    fiducial_matrix = np.zeros(img_shape, dtype=np.uint16)
     fiducial_points_found = []
     for point in fiducial_points_guess : 
         
         # create non-zero shpere around fiducial guess in which to threshold
-        center = mm_to_index(point, origin, pixel_spacing)
+        center = cm_to_index(point, origin, pixel_spacing)
+        print(center)
         distance = np.linalg.norm(np.subtract(np.indices(img_shape).T,np.asarray(center)), axis=len(center)).T
-        mask = np.ones(img_shape) * (distance<=fiducial_rad) * img3d
+        distance = distance.astype(np.uint16)
+        mask = np.ones(img_shape, dtype=np.uint16) * (distance<=fiducial_rad) * img3d
 
         # threshold to find fiducial
         thresh = exam.Series[0].ImageStack.MaxStoredValue / 2
@@ -152,22 +157,24 @@ def get_search_radius (fiducial_points_guess, origin, pixel_spacing):
 
     Parameters
     ----------
-    fiducial_points_guess : list [z,y,x]
-        Guesses for the fiducial locations in mm
+    fiducial_points_guess : list (2d) [[z,y,x], ... ]
+        Guesses for the fiducial locations in cm
     origin : typle (z,y,x)
-        Location of image origin relative to numpy matrix indexing in mm
+        Location of image origin relative to numpy matrix indexing in cm
     pixel_spacing : tuple (z,y,x)
-        Distance between the centre of pixel in all three dimentions in mm
+        Distance between the centre of pixel in all three dimentions in cm
 
     Returns
     -------
     fiducial_rad : float
         Radius of search for fiducials
     '''
+    if len(fiducial_points_guess) < 2 :
+        return 10
     fid_point_index = []
     distances = []
     for val, point in enumerate(fiducial_points_guess) : 
-        fid_point_index.append(np.array(mm_to_index(point, origin, pixel_spacing)))
+        fid_point_index.append(np.array(cm_to_index(point, origin, pixel_spacing)))
         if val > 0 : 
             squared_dist = np.sum((fid_point_index[val]-fid_point_index[val-1])**2, axis=0)
             distances.append(np.sqrt(squared_dist))
@@ -202,13 +209,12 @@ def get_poi_data (case, exam) :
     poi_locations = []
     poi_names = []
     # determine locations of all POIs in case/examination
-    for name in case.PatientModel.StructureSets[exam.Name].PoiGeometries : 
-        point = dict(case.PatientModel.StructureSets[exam.Name].PoiGeometries[name].Point)
-        poi_locations.append((point['z'], point['y'], point['x']))
-        poi_names.append(name)
+    for poi in case.PatientModel.StructureSets[exam.Name].PoiGeometries : 
+        poi_locations.append((poi.Point.z, poi.Point.y, poi.Point.x))
+        poi_names.append(poi.OfPoi.Name)
     return poi_locations, poi_names
 
-def move_pois (case, exam, fiducial_points, poi_names) : 
+def move_pois (case, exam, fiducial_points, poi_names, origin, pixel_spacing) : 
     '''
     move_pois moves existing pois to new found fiducial locations.
 
@@ -222,6 +228,10 @@ def move_pois (case, exam, fiducial_points, poi_names) :
         The locations of the fiducials
     poi_names : list
         names on POIs in selected case and exam
+    origin : typle (z,y,x)
+        Location of image origin relative to numpy matrix indexing in cm
+    pixel_spacing : tuple (z,y,x)
+        Distance between the centre of pixel in all three dimentions in cm
 
     Returns
     -------
@@ -232,14 +242,15 @@ def move_pois (case, exam, fiducial_points, poi_names) :
         print("The number of fiducial points and names don't match")
         return None
     
-    # change the positions of the 
+    # change the positions of the POIs
     for i, name  in enumerate(poi_names) : 
-        new_point = {'x' : fiducial_points[i][2], 'y' : fiducial_points[i][1], 'z' : fiducial_points[i][0]}
+        point_cm = index_to_cm (fiducial_points[i], origin, pixel_spacing)
+        new_point = {'x' : point_cm[2], 'y' : point_cm[1], 'z' : point_cm[0]}
         case.PatientModel.StructureSets[exam.Name].PoiGeometries[name].Point = new_point
 
     return None 
 
-def create_pois (case, exam, fiducial_points, poi_names) : 
+def create_pois (case, exam, fiducial_points, poi_names, origin, pixel_spacing) : 
     '''
     create_pois creates new POIS from found fiducial locations and a list of names.
 
@@ -253,6 +264,10 @@ def create_pois (case, exam, fiducial_points, poi_names) :
         The locations of the fiducials
     poi_names : list
         Names on POIs in selected case and exam
+    origin : typle (z,y,x)
+        Location of image origin relative to numpy matrix indexing in cm
+    pixel_spacing : tuple (z,y,x)
+        Distance between the centre of pixel in all three dimentions in cm
 
     Returns
     -------
@@ -264,8 +279,45 @@ def create_pois (case, exam, fiducial_points, poi_names) :
         return None
 
     for i, name  in enumerate(poi_names) : 
-        new_point = {'x' : fiducial_points[i][2], 'y' : fiducial_points[i][1], 'z' : fiducial_points[i][0]}
-        case.PatientModel.CreatePoi(Examination=exam, Point=new_point, Volume=0, Name=name, Colour="Yellow", Type="Undefined")
+        point_cm = index_to_cm (fiducial_points[i], origin, pixel_spacing)
+        new_point = {'x' : point_cm[2], 'y' : point_cm[1], 'z' : point_cm[0]}
+        case.PatientModel.CreatePoi(Examination=exam, Point=new_point, Volume=0, Name=name, Color="Yellow", Type="Undefined")
+
+    return None
+
+def new_poi_geometries (case, exam, fiducial_points, poi_names, origin, pixel_spacing) : 
+    '''
+    new_poi_geometries creates new POI geometries on a given case and exam 
+    for existing POIs.
+
+    Parameters
+    ----------
+    case : PyScriptObject
+        case data from the raystation statetree
+    exam : PyScriptObject
+        examination data from the raystation statetree
+    fiducial_points : list (2d)
+        The locations of the fiducials
+    poi_names : list
+        Names on POIs in selected case and exam
+    origin : typle (z,y,x)
+        Location of image origin relative to numpy matrix indexing in cm
+    pixel_spacing : tuple (z,y,x)
+        Distance between the centre of pixel in all three dimentions in cm
+
+    Returns
+    -------
+    None
+    '''
+    # check that the number of poi names and location match
+    if len(fiducial_points) != len(poi_names) : 
+        print("The number of fiducial points and names don't match")
+        return None
+
+    for i, name  in enumerate(poi_names) :
+        point_cm = index_to_cm (fiducial_points[i], origin, pixel_spacing)
+        new_point = {'x' : point_cm[2], 'y' : point_cm[1], 'z' : point_cm[0]}
+        case.PatientModel.StructureSets[exam.Name].PoiGeometries[name].Point = new_point
 
     return None
 
@@ -273,9 +325,9 @@ def create_pois (case, exam, fiducial_points, poi_names) :
 #################### math functions ###############################
 ###################################################################
 
-def index_to_mm (point_index, origin, pixel_spacing, rounding=False):
+def index_to_cm (point_index, origin, pixel_spacing, rounding=False):
     '''
-    index_to_mm converts a point position in index values of the numpy array to positions in mm. 
+    index_to_cm converts a point position in index values of the numpy array to positions in cm. 
     All values are rounded to nearest integer. 
 
     Parameters
@@ -283,59 +335,58 @@ def index_to_mm (point_index, origin, pixel_spacing, rounding=False):
     point_index : list [z_index,y_index,x_index]
         Point index values to convert
     origin : typle (z,y,x)
-        Location of image origin relative to numpy matrix indexing in mm
+        Location of image origin relative to numpy matrix indexing in cm
     pixel_spacing : tuple (z,y,x)
-        Distance between the centre of pixel in all three dimentions in mm
+        Distance between the centre of pixel in all three dimentions in cm
 
     Returns
     -------
-    point_mm : list [z_mm,y_mm,x_mm]
-        Point values in mm
+    point_cm : list [z_cm,y_cm,x_cm]
+        Point values in cm
     '''
-    x_mm = (origin[0] + point_index[2] * pixel_spacing[2])
-    y_mm = (origin[1] + point_index[1] * pixel_spacing[1])
-    z_mm = (origin[0] + point_index[0] * pixel_spacing[0])
+    x_cm = (origin[2] + point_index[2] * pixel_spacing[2])
+    y_cm = (origin[1] + point_index[1] * pixel_spacing[1])
+    z_cm = (origin[0] + point_index[0] * pixel_spacing[0])
 
     if rounding : 
-        return [round(z_mm), round(y_mm), round(x_m)]
+        return [round(z_cm), round(y_cm), round(x_m)]
 
-    return [z_mm, y_mm, x_mm]
+    return [z_cm, y_cm, x_cm]
 
-def mm_to_index (point_mm, origin, pixel_spacing, rounding=True):
+def cm_to_index (point_cm, origin, pixel_spacing, rounding=True):
     '''
-    index_to_mm converts a point position in mm to positions in index values.
+    index_to_cm converts a point position in cm to positions in index values.
     All values are rounded to nearest integer. 
 
     Parameters
     ----------
-    point_mm : list [z_mm,y_mm,x_mm]
-        Point values in mm tp convert
+    point_cm : list [z_cm,y_cm,x_cm]
+        Point values in cm tp convert
     origin : typle (z,y,x)
-        Location of image origin relative to numpy matrix indexing in mm
+        Location of image origin relative to numpy matrix indexing in cm
     pixel_spacing : tuple (z,y,x)
-        Distance between the centre of pixel in all three dimentions in mm
+        Distance between the centre of pixel in all three dimentions in cm
 
     Returns
     -------
     point_index : list [z_index,y_index,x_index]
         Point index values 
     '''
-    x_index = ((point_mm[2] - origin[2]) / pixel_spacing[2])
-    y_index = ((point_mm[1] - origin[1]) / pixel_spacing[1])
-    z_index = ((point_mm[0] - origin[0]) / pixel_spacing[0])
+    x_index = ((point_cm[2] - origin[2]) / pixel_spacing[2])
+    y_index = ((point_cm[1] - origin[1]) / pixel_spacing[1])
+    z_index = ((point_cm[0] - origin[0]) / pixel_spacing[0])
 
     if rounding : 
         return [round(z_index), round(y_index), round(x_index)]
 
     return [z_index, y_index, x_index]
 
-
-def center_of_mass(input):
+def center_of_mass(arr):
     """
     Calculate the center of mass of the values of an array at labels.
     Parameters
     ----------
-    input : ndarray
+    arr : ndarray
         Data from which to calculate center-of-mass.
 
     Returns
@@ -343,21 +394,15 @@ def center_of_mass(input):
     center_of_mass : tuple, or list of tuples
         Coordinates of centers-of-mass.
     """
-    normalizer = np.sum(input)
-    grids = np.ogrid[[slice(0, i) for i in input.shape]]
+    normalizer = np.sum(arr)
+    grids = np.ogrid[[slice(0, i) for i in arr.shape]]
 
-    results = [np.sum(input * grids[dir].astype(float)) / normalizer
-               for dir in range(input.ndim)]
+    results = [np.sum(arr * grids[num].astype(float)) / normalizer for num in range(arr.ndim)]
 
     if np.isscalar(results[0]):
         return tuple(results)
 
     return [tuple(v) for v in np.array(results).T]
-
-
-###################################################################
-#################### testing functions ############################
-###################################################################
 
 
 ###################################################################
@@ -377,21 +422,21 @@ def main () :
         sys.exit()
 
     # get poi locations in reference image (TPCT)
-    poi_locations, poi_names = get_poi_data (case, exam)
+    poi_locations, poi_names = get_poi_data (case, examination)
     fiducial_points_guess = poi_locations
 
-    for exam in case.Examinations :
+    for i, exam in enumerate(case.Examinations) :
         # get the ct as numpy array, and associated shape values
         img3d, img_shape, origin, pixel_spacing = image_data(exam)
         # determine seach radius from starting search locations
         fiducial_rad = get_search_radius(fiducial_points_guess, origin, pixel_spacing)
         # get fiducials and print 
-        fiducial_matrix, fiducial_points_found, fiducial_cm = fiducial_search_area(img3d, fiducial_points_guess, fiducial_rad, img_shape, origin, pixel_spacing)
+        fiducial_matrix, fiducial_points_found, fiducial_cm = fiducial_search_area(exam, img3d, fiducial_points_guess, fiducial_rad, img_shape, origin, pixel_spacing)
         # create new POIs where fiducials were found 
         if exam.Name == examination.Name : 
-            move_pois (case, exam, fiducial_points_found, poi_names)
+            move_pois(case, exam, fiducial_points_found, poi_names, origin, pixel_spacing)
         else : 
-            create_pois (case, exam, fiducial_points, poi_names)
+            new_poi_geometries(case, exam, fiducial_points_found, poi_names, origin, pixel_spacing)
 
     return
 

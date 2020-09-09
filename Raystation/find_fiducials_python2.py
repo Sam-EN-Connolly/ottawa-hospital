@@ -10,15 +10,15 @@ $ python OpenViewCT.py ~/filepath
 
 '''
 
-import pydicom as dcm
-import numpy as np
 import sys
 import os 
 import glob
 import warnings
 
-warnings.filterwarnings("ignore", category=RuntimeWarning)
+import numpy as np
+import pydicom as dcm
 
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 # define global variables
 
